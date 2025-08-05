@@ -8,6 +8,12 @@ read -p "🌀 Enter desired Xray version (default: 25.3.6): " XRAY_VERSION
 SERVICE_PORT=${SERVICE_PORT:-59100}
 XRAY_VERSION=${XRAY_VERSION:-25.3.6}
 
+# --- FIX DNS BEFORE WARP ---
+echo "🔧 Setting custom resolv.conf with Cloudflare DNS..."
+rm -rf /etc/resolv.conf
+echo -e 'nameserver 1.1.1.1\nnameserver 1.0.0.1' > /etc/resolv.conf
+chattr +i /etc/resolv.conf
+
 # --- INSTALL DOCKER ---
 echo "🚀 Installing Docker..."
 curl -fsSL https://get.docker.com | sh
@@ -40,10 +46,17 @@ sed -i "/^\s*environment:/a \ \ \ \ \ \ SERVICE_PORT: \"$SERVICE_PORT\"\n\ \ \ \
 # --- START MARZNODE ---
 docker compose -f ./compose.yml up -d
 
-# --- INSTALL WGCF & WARP CONFIG ---
+# --- INSTALL wgcf + wireguard IF NEEDED ---
 cd ~
 wget -O wgcf https://github.com/ViRb3/wgcf/releases/download/v2.2.27/wgcf_2.2.27_linux_amd64
 chmod +x wgcf && sudo mv wgcf /usr/bin/wgcf
+
+if ! command -v wg-quick >/dev/null; then
+  echo "🧩 Installing missing WireGuard tools (wg, wg-quick)..."
+  sudo apt update && sudo apt install -y wireguard wireguard-tools
+fi
+
+# --- CONFIGURE WARP ---
 wgcf register || true
 wgcf generate
 sed -i '/MTU = 1280/a Table = off' wgcf-profile.conf
@@ -52,21 +65,21 @@ sudo cp wgcf-profile.conf /etc/wireguard/warp.conf
 
 echo "⚙️ Attempting to start WireGuard warp interface..."
 if systemctl start wg-quick@warp 2>/dev/null; then
-  echo "✅ Warp interface started."
+  echo "✅ Warp interface started successfully."
 else
   echo "❌ Failed to start wg-quick@warp."
 
   read -p "❓ Do you want to continue anyway? [y/N]: " choice
   case "$choice" in
     y|Y ) echo "🔁 Continuing setup...";;
-    * ) echo "🛑 Installation aborted due to Warp failure."; exit 1;;
+    * ) echo "🛑 Aborted due to Warp failure."; exit 1;;
   esac
 fi
 
 if systemctl enable wg-quick@warp 2>/dev/null; then
-  echo "✅ Warp interface enabled."
+  echo "✅ Warp interface enabled at boot."
 else
-  echo "⚠️ Failed to enable wg-quick@warp. Skipping enable step."
+  echo "⚠️ Could not enable wg-quick@warp. Skipped."
 fi
 
 # --- UPGRADE XRAY CORE ---
@@ -95,16 +108,27 @@ awk '
 { print }
 ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 
-# --- RESTART XRAY + DNS FIX ---
-echo '{"dns": ["1.1.1.1", "1.0.0.1"]}' | sudo tee /etc/docker/daemon.json
-sudo systemctl restart docker
-docker restart marznode-marznode-1
-rm -rf /etc/resolv.conf && echo -e 'nameserver 1.1.1.1\nnameserver 1.0.0.1' > /etc/resolv.conf
-chattr +i /etc/resolv.conf
+# --- RESTART MARZNODE WITH NEW CORE ---
+docker compose -f "$COMPOSE_FILE" down
+docker compose -f "$COMPOSE_FILE" up -d
 
 # --- INSTALL NETWORK OPTIMIZER (BBR) ---
 sudo apt-get -o Acquire::ForceIPv4=true update
 sudo apt-get -o Acquire::ForceIPv4=true install -y sudo curl jq
 bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/develfishere/Linux_NetworkOptimizer/main/bbr.sh)
 
-echo "✅ Setup completed successfully!"
+# --- FINAL OUTPUT ---
+echo
+echo "🎉 All done! Here are some important outputs:"
+echo "---------------------------------------------"
+echo "🔐 Xray x25519 key pair:"
+docker exec marznode-marznode-1 xray x25519 || echo "⚠️ Could not generate x25519 inside container."
+
+echo
+echo "🔑 Random hex (openssl rand -hex 8):"
+openssl rand -hex 8 || echo "⚠️ openssl not found."
+
+echo
+echo "📦 Selected SERVICE_PORT: $SERVICE_PORT"
+echo "🌀 Selected XRAY_VERSION: $XRAY_VERSION"
+echo "---------------------------------------------"
