@@ -120,12 +120,6 @@ echo "[+] Starting MarzNode Docker container..."
 docker compose -f ./compose.yml up -d
 cd
 
-echo "[+] Fixing DNS resolver..."
-chattr -i /etc/resolv.conf || true
-rm -f /etc/resolv.conf
-echo -e 'nameserver 1.1.1.1\nnameserver 1.0.0.1' > /etc/resolv.conf
-chattr +i /etc/resolv.conf || true
-
 echo "[+] Installing and configuring wgcf..."
 wget https://github.com/ViRb3/wgcf/releases/download/v2.2.27/wgcf_2.2.27_linux_amd64
 chmod +x wgcf_2.2.27_linux_amd64
