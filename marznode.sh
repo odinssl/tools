@@ -1,40 +1,46 @@
 #!/bin/bash
 set -e
 
-# --- USER INPUT ---
-read -p "🔐 Enter full certificate content (PEM format). Press Ctrl+D when done: " -d '' CERT
+# --- USER INPUTS ---
 read -p "📦 Enter service port (default: 59100): " SERVICE_PORT
 read -p "🌀 Enter desired Xray version (default: 25.3.6): " XRAY_VERSION
 
 SERVICE_PORT=${SERVICE_PORT:-59100}
 XRAY_VERSION=${XRAY_VERSION:-25.3.6}
 
-# --- Install Docker ---
+# --- INSTALL DOCKER ---
 echo "🚀 Installing Docker..."
 curl -fsSL https://get.docker.com | sh
 
-# --- Create necessary folders ---
+# --- CREATE DIRECTORIES ---
 mkdir -p /var/lib/marznode/certs
 mkdir -p /var/lib/marznode/data
 
-# --- Save certificate ---
-echo "$CERT" > /var/lib/marznode/client.pem
+# --- GET CERTIFICATES ---
+echo "🔐 Paste your client certificate (client.pem). The editor will open. Save and exit when done."
+${EDITOR:-nano} /var/lib/marznode/client.pem
 
-# --- Download config file ---
+echo "📄 Paste your fullchain.pem (TLS certificate). The editor will open. Save and exit when done."
+${EDITOR:-nano} /var/lib/marznode/certs/fullchain.pem
+
+echo "🔑 Paste your key.pem (TLS private key). The editor will open. Save and exit when done."
+${EDITOR:-nano} /var/lib/marznode/certs/key.pem
+
+# --- DOWNLOAD XRAY CONFIG ---
 curl -L https://github.com/marzneshin/marznode/raw/master/xray_config.json -o /var/lib/marznode/xray_config.json
 
-# --- Clone marznode repository ---
+# --- CLONE MARZNODE REPO ---
 cd ~
 git clone https://github.com/marzneshin/marznode || true
 cd marznode
 
-# --- Inject environment variables into compose.yml ---
+# --- UPDATE COMPOSE.YML ---
 sed -i "/^\s*environment:/a \ \ \ \ \ \ SERVICE_PORT: \"$SERVICE_PORT\"\n\ \ \ \ \ \ INSECURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE_INTERVAL: \"5\"" ./compose.yml
 
-# --- Start marznode using Docker Compose ---
+# --- START MARZNODE ---
 docker compose -f ./compose.yml up -d
 
-# --- Install wgcf and configure Warp ---
+# --- INSTALL WGCF & WARP CONFIG ---
 cd ~
 wget -O wgcf https://github.com/ViRb3/wgcf/releases/download/v2.2.27/wgcf_2.2.27_linux_amd64
 chmod +x wgcf && sudo mv wgcf /usr/bin/wgcf
@@ -46,7 +52,7 @@ sudo cp wgcf-profile.conf /etc/wireguard/warp.conf
 sudo systemctl start wg-quick@warp
 sudo systemctl enable wg-quick@warp
 
-# --- Upgrade Xray Core ---
+# --- UPGRADE XRAY CORE ---
 echo "⬇️ Downloading Xray version $XRAY_VERSION..."
 apt update && apt install -y unzip
 cd /var/lib/marznode/data
@@ -58,7 +64,7 @@ rm "$XRAY_ZIP"
 cp /var/lib/marznode/data/xray /var/lib/marznode/xray
 chmod +x /var/lib/marznode/xray
 
-# --- Update XRAY paths in docker-compose ---
+# --- SET XRAY PATHS IN COMPOSE ---
 COMPOSE_FILE=~/marznode/compose.yml
 sed -i '/XRAY_EXECUTABLE_PATH:/d' "$COMPOSE_FILE"
 sed -i '/XRAY_ASSETS_PATH:/d' "$COMPOSE_FILE"
@@ -72,14 +78,14 @@ awk '
 { print }
 ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 
-# --- Restart Docker and apply DNS settings ---
+# --- RESTART XRAY + DOCKER DNS ---
 echo '{"dns": ["1.1.1.1", "1.0.0.1"]}' | sudo tee /etc/docker/daemon.json
 sudo systemctl restart docker
 docker restart marznode-marznode-1
 rm -rf /etc/resolv.conf && echo -e 'nameserver 1.1.1.1\nnameserver 1.0.0.1' > /etc/resolv.conf
 chattr +i /etc/resolv.conf
 
-# --- Network Optimizer ---
+# --- INSTALL NETWORK OPTIMIZER (BBR) ---
 sudo apt-get -o Acquire::ForceIPv4=true update
 sudo apt-get -o Acquire::ForceIPv4=true install -y sudo curl jq
 bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/develfishere/Linux_NetworkOptimizer/main/bbr.sh)
