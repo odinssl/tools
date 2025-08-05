@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# --- USER INPUTS ---
+# --- USER INPUT ---
 read -p "📦 Enter service port (default: 59100): " SERVICE_PORT
 read -p "🌀 Enter desired Xray version (default: 25.3.6): " XRAY_VERSION
 
@@ -49,8 +49,25 @@ wgcf generate
 sed -i '/MTU = 1280/a Table = off' wgcf-profile.conf
 sudo mkdir -p /etc/wireguard
 sudo cp wgcf-profile.conf /etc/wireguard/warp.conf
-sudo systemctl start wg-quick@warp
-sudo systemctl enable wg-quick@warp
+
+echo "⚙️ Attempting to start WireGuard warp interface..."
+if systemctl start wg-quick@warp 2>/dev/null; then
+  echo "✅ Warp interface started."
+else
+  echo "❌ Failed to start wg-quick@warp."
+
+  read -p "❓ Do you want to continue anyway? [y/N]: " choice
+  case "$choice" in
+    y|Y ) echo "🔁 Continuing setup...";;
+    * ) echo "🛑 Installation aborted due to Warp failure."; exit 1;;
+  esac
+fi
+
+if systemctl enable wg-quick@warp 2>/dev/null; then
+  echo "✅ Warp interface enabled."
+else
+  echo "⚠️ Failed to enable wg-quick@warp. Skipping enable step."
+fi
 
 # --- UPGRADE XRAY CORE ---
 echo "⬇️ Downloading Xray version $XRAY_VERSION..."
@@ -78,7 +95,7 @@ awk '
 { print }
 ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 
-# --- RESTART XRAY + DOCKER DNS ---
+# --- RESTART XRAY + DNS FIX ---
 echo '{"dns": ["1.1.1.1", "1.0.0.1"]}' | sudo tee /etc/docker/daemon.json
 sudo systemctl restart docker
 docker restart marznode-marznode-1
