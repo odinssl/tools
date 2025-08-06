@@ -120,17 +120,23 @@ echo "[+] Starting MarzNode Docker container..."
 docker compose -f ./compose.yml up -d
 cd
 
-echo "[+] Installing and configuring wgcf..."
-wget https://github.com/ViRb3/wgcf/releases/download/v2.2.27/wgcf_2.2.27_linux_amd64
-chmod +x wgcf_2.2.27_linux_amd64
-mv wgcf_2.2.27_linux_amd64 /usr/bin/wgcf
-wgcf register || true
-wgcf generate
+# Ask if WARP should be installed
+read -p "Do you want to install and configure WARP? [y/N]: " INSTALL_WARP
+if [[ "$INSTALL_WARP" =~ ^[Yy]$ ]]; then
+  echo "[+] Installing and configuring wgcf..."
+  wget https://github.com/ViRb3/wgcf/releases/download/v2.2.27/wgcf_2.2.27_linux_amd64
+  chmod +x wgcf_2.2.27_linux_amd64
+  mv wgcf_2.2.27_linux_amd64 /usr/bin/wgcf
+  wgcf register || true
+  wgcf generate
 
-apt update && apt install -y wireguard-dkms wireguard-tools resolvconf
-sed -i '/MTU = 1280/a Table = off' ~/wgcf-profile.conf
-cp ~/wgcf-profile.conf /etc/wireguard/warp.conf
-systemctl enable wg-quick@warp
+  apt update && apt install -y wireguard-dkms wireguard-tools resolvconf
+  sed -i '/MTU = 1280/a Table = off' ~/wgcf-profile.conf
+  cp ~/wgcf-profile.conf /etc/wireguard/warp.conf
+  systemctl enable wg-quick@warp
+else
+  echo "[!] Skipping WARP installation."
+fi
 
 echo "[+] Configuring Docker DNS..."
 echo '{"dns": ["1.1.1.1", "1.0.0.1"]}' | tee /etc/docker/daemon.json
@@ -191,3 +197,351 @@ echo ""
 echo "🔒 Random Hex (for UUID or other use):"
 openssl rand -hex 8
 echo "----------------------------------------"
+
+echo "[+] Generating Reality keys..."
+KEYS=$(docker exec marznode-marznode-1 xray x25519)
+PRIVATE_KEY=$(echo "$KEYS" | grep 'Private key:' | awk '{print $3}')
+PUBLIC_KEY=$(echo "$KEYS" | grep 'Public key:' | awk '{print $3}')
+SHORT_ID=$(openssl rand -hex 8)
+
+echo "[+] Writing Xray config with injected keys..."
+
+cat > /var/lib/marznode/xray_config.json <<EOF
+{
+    "log": {
+        "loglevel": "warning"
+    },
+    "dns": {
+        "servers": [
+            "https+local://1.1.1.1/dns-query",
+            "https+local://1.0.0.1/dns-query"
+        ]
+    },
+    "routing": {
+        "domainStrategy": "IPIfNonMatch",
+        "rules": [
+            {
+                "type": "field",
+                "outboundTag": "warp",
+                "ip": [
+                    "geoip:ir"
+                ]
+            },
+            {
+                "type": "field",
+                "outboundTag": "warp",
+                "domain": [
+                    "domain:spotify.com",
+                    "domain:galxe.com",
+                    "domain:somnia.network",
+                    "domain:beamable.network",
+                    "domain:mql5.com",
+                    "geosite:google",
+                    "geosite:netflix",
+                    "geosite:spotify",
+                    "geosite:nvidia",
+                    "geosite:bytedance",
+                    "geosite:tiktok",
+                    "geosite:unity",
+                    "geosite:reddit",
+                    "geosite:openai",
+                    "domain:ip.gs",
+                    "domain:kmplayer.com",
+                    "domain:ipinfo.io",
+                    "domain:openai.com",
+                    "domain:ai.com",
+                    "domain:intract.io",
+                    "domain:freepik.com",
+                    "domain:developer.mozilla.org",
+                    "domain:behance.net",
+                    "domain:remini.com",
+                    "domain:snapchat.com",
+                    "domain:lagrangefoundation.org",
+                    "domain:tunetank.com",
+                    "domain:livechart.me",
+                    "domain:layeredge.foundation",
+                    "domain:9anime.me",
+                    "domain:pixelexperience.org",
+                    "domain:evolution-x.org",
+                    "domain:kenvyra.xyz",
+                    "domain:eclipse.xyz",
+                    "domain:spark-os.live",
+                    "domain:pixelos.net",
+                    "domain:gamebanana.com",
+                    "domain:campnetwork.xyz",
+                    "domain:beamable.network",
+                    "domain:openledger.xyz",
+                    "domain:0g.ai",
+                    "domain:myanimelist.net",
+                    "domain:sourcemod.net",
+                    "domain:alliedmods.net",
+                    "domain:pagespeed.web.dev",
+                    "domain:mantra.zone",
+                    "domain:thadfiscella.com",
+                    "domain:universalx.app",
+                    "domain:kinto.xyz",
+                    "domain:battle.net",
+                    "domain:axieinfinity.com",
+                    "domain:clubhouse.com",
+                    "domain:omegle.com",
+                    "domain:alldatasheet.com",
+                    "domain:flaticon.com",
+                    "domain:xda-developers.com",
+                    "domain:giglio.com",
+                    "domain:lookmovie2.to",
+                    "domain:adbtc.top",
+                    "domain:homedepot.com",
+                    "domain:flutter.dev",
+                    "domain:adobe.com",
+                    "domain:iog.net",
+                    "domain:saharalabs.ai",
+                    "domain:warpcast.com",
+                    "domain:walrus.site",
+                    "domain:lumoz.org",
+                    "domain:chainbase.com",
+                    "domain:eigenfoundation.org",
+                    "domain:aptosfoundation.org",
+                    "domain:story.foundation",
+                    "domain:nillion.com",
+                    "domain:sandbox.game",
+                    "domain:superrare.com",
+                    "domain:caldera.xyz",
+                    "domain:plumenetwork.xyz",
+                    "domain:sunriselayer.io",
+                    "domain:sonic.game",
+                    "domain:allora.network",
+                    "domain:ethermail.io",
+                    "domain:immutable.com",
+                    "domain:illuvium.io",
+                    "domain:clutchplay.ai",
+                    "domain:mintpad.co",
+                    "domain:getgrass.io",
+                    "domain:zksync.io",
+                    "domain:sonic.game",
+                    "domain:viem.sh",
+                    "domain:nubit.org",
+                    "domain:cookie.community",
+                    "domain:gmx.io",
+                    "domain:xally.ai",
+                    "domain:gmx.io",
+                    "domain:zknation.io",
+                    "domain:babylonchain.io",
+                    "domain:berachain.com",
+                    "domain:initia.xyz",
+                    "domain:galaxy.eco",
+                    "domain:zora.energy",
+                    "domain:alfafrens.com",
+                    "domain:zora.co",
+                    "domain:spectrallabs.xyz",
+                    "domain:zksync.io",
+                    "domain:jumper.exchange",
+                    "domain:eigenfoundation.org",
+                    "domain:etherscan.io",
+                    "domain:cryptocompare.com",
+                    "domain:trustalabs.ai",
+                    "domain:instagram.com",
+                    "domain:iq.space",
+                    "domain:venom.network",
+                    "domain:synonai.net",
+                    "domain:okx.com",
+                    "domain:signetfaucet.com",
+                    "domain:passport.gitcoin.co",
+                    "domain:gitcoin.co",
+                    "domain:sending.me",
+                    "domain:layer3.xyz",
+                    "domain:nfprompt.io",
+                    "domain:gamic.app",
+                    "domain:bitavatar.io",
+                    "domain:sonorus.network",
+                    "domain:guild.xyz",
+                    "domain:gv2.com",
+                    "domain:clutchplay.ai",
+                    "domain:app-measurment.com",
+                    "domain:defisaver.com",
+                    "domain:infura.io",
+                    "domain:bscscan.com",
+                    "domain:ntp.org",
+                    "domain:codefi.network",
+                    "domain:binance.org",
+                    "domain:coingecko.com",
+                    "domain:drip.haus",
+                    "domain:dcounter.space",
+                    "domain:gleam.io",
+                    "domain:myshell.ai",
+                    "domain:angle.money",
+                    "domain:qna3.ai",
+                    "domain:namada.net",
+                    "domain:dimension.xyz",
+                    "domain:etherpillar.org",
+                    "domain:caldera.dev",
+                    "domain:polygon-rpc.com",
+                    "domain:civic.com",
+                    "domain:walletconnect.com",
+                    "domain:segment.io",
+                    "domain:herokuapp.com",
+                    "domain:yooldo.gg",
+                    "domain:over.network",
+                    "domain:unity3d.com",
+                    "domain:theblock.co",
+                    "domain:tiktok.com",
+                    "domain:zkbridge.com",
+                    "domain:monad.xyz",
+                    "domain:sunriselayer.io",
+                    "domain:metamask.io",
+                    "tld-ir"
+                ]
+            },
+            {
+                "type": "field",
+                "ip": [
+                    "geoip:private"
+                ],
+                "outboundTag": "block"
+            }
+        ]
+    },
+    "inbounds": [
+        {
+            "tag": "C4",
+            "listen": "0.0.0.0",
+            "port": 443,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "ws",
+                "wsSettings": {},
+                "security": "tls",
+                "tlsSettings": {
+                    "serverName": "",
+                    "certificates": [
+                        {
+                            "ocspStapling": 3600,
+                            "certificateFile": "/var/lib/marznode/certs/fullchain.pem",
+                            "keyFile": "/var/lib/marznode/certs/key.pem"
+                        }
+                    ],
+                    "minVersion": "1.1",
+                    "cipherSuites": "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+                }
+            },
+            "sniffing": {
+                "enabled": false,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        },
+        {
+            "tag": "C3",
+            "listen": "0.0.0.0",
+            "port": 3641,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "none",
+                "tcpSettings": {
+                    "header": {
+                        "type": "http",
+                        "request": {
+                            "method": "GET",
+                            "path": [
+                                "/"
+                            ],
+                            "headers": {
+                                "Host": [
+                                    "dash.cloudflare.com"
+                                ]
+                            }
+                        },
+                        "response": {}
+                    }
+                }
+            },
+            "sniffing": {
+                "enabled": false,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        },
+        {
+            "tag": "C1",
+            "listen": "0.0.0.0",
+            "port": 6690,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "tcpSettings": {},
+                "security": "reality",
+                "realitySettings": {
+                    "show": false,
+                    "dest": "refersion.com:443",
+                    "xver": 0,
+                    "serverNames": [
+                        "refersion.com"
+                    ],
+                    "privateKey": "$PRIVATE_KEY",
+                    "publicKey": "$PUBLIC_KEY",
+                    "shortIds": [
+                        "$SHORT_ID"
+                    ]
+                }
+            },
+            "sniffing": {
+                "enabled": false,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        },
+        {
+            "tag": "http-proxy",
+            "listen": "0.0.0.0",
+            "port": 4545,
+            "protocol": "http",
+            "settings": {},
+            "sniffing": {
+                "enabled": false,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "protocol": "freedom",
+            "tag": "direct"
+        },
+        {
+            "tag": "warp",
+            "protocol": "freedom",
+            "streamSettings": {
+                "sockopt": {
+                    "tcpFastOpen": true,
+                    "interface": "warp"
+                }
+            }
+        },
+        {
+            "protocol": "blackhole",
+            "tag": "block"
+        }
+    ]
+}
+EOF
