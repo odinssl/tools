@@ -488,7 +488,7 @@ cat > /var/lib/marznode/xray_config.json <<EOF
                 "security": "reality",
                 "realitySettings": {
                     "show": false,
-                    "dest": "refersion.com:443",
+                    "dest": "mdundo.com:443",
                     "xver": 0,
                     "serverNames": [
                         "refersion.com"
