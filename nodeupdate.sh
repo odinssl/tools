@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # --- Config (change if your paths differ) ---
-XRAY_VERSION="25.10.15"
+XRAY_VERSION="25.6.8"
 DATA_DIR="/var/lib/marznode/data"
 XRAY_BIN="/var/lib/marznode/xray"
 ASSET_ZIP="Xray-linux-64.zip"
