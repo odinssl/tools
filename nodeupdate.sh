@@ -1,12 +1,12 @@
 #!/bin/bash
-# xray-switch-25.6.8.sh
-# Single-command switcher to Xray v25.6.8 for MarzNode/V2Ray stacks.
+# xray-switch-25.10.15.sh
+# Single-command switcher to Xray v25.10.15 for MarzNode/V2Ray stacks.
 # It ONLY replaces the xray binary & geo assets, then restarts marznode if found.
 
 set -euo pipefail
 
 # --- Config (change if your paths differ) ---
-XRAY_VERSION="25.6.8"
+XRAY_VERSION="25.10.15"
 DATA_DIR="/var/lib/marznode/data"
 XRAY_BIN="/var/lib/marznode/xray"
 ASSET_ZIP="Xray-linux-64.zip"
