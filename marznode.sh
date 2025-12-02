@@ -424,38 +424,23 @@ cat > /var/lib/marznode/xray_config.json <<EOF
                 ]
             }
         },
-        {
-            "tag": "C3",
+                {
+            "tag": "4tun",
             "listen": "0.0.0.0",
-            "port": 3641,
-            "protocol": "vless",
+            "port": 4545,
+            "protocol": "vmess",
             "settings": {
-                "clients": [],
-                "decryption": "none"
+                "clients": []
             },
             "streamSettings": {
-                "network": "tcp",
+                "network": "grpc",
                 "security": "none",
-                "tcpSettings": {
-                    "header": {
-                        "type": "http",
-                        "request": {
-                            "method": "GET",
-                            "path": [
-                                "/"
-                            ],
-                            "headers": {
-                                "Host": [
-                                    "dash.cloudflare.com"
-                                ]
-                            }
-                        },
-                        "response": {}
-                    }
+                "grpcSettings": {
+                    "serviceName": "odin"
                 }
             },
             "sniffing": {
-                "enabled": false,
+                "enabled": true,
                 "destOverride": [
                     "http",
                     "tls"
@@ -496,22 +481,8 @@ cat > /var/lib/marznode/xray_config.json <<EOF
                     "tls"
                 ]
             }
-        },
-        {
-            "tag": "http-proxy",
-            "listen": "0.0.0.0",
-            "port": 4545,
-            "protocol": "http",
-            "settings": {},
-            "sniffing": {
-                "enabled": false,
-                "destOverride": [
-                    "http",
-                    "tls"
-                ]
-            }
         }
-    ],
+        ],
     "outbounds": [
         {
             "protocol": "freedom",
