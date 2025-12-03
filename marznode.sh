@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# توقف اسکریپت در صورت بروز خطا
+# توقف در صورت بروز خطا
 set -e
 
 # --- دریافت ورودی‌ها ---
@@ -13,13 +13,19 @@ XRAY_VERSION=${XRAY_VERSION:-25.3.6}
 read -p "Enter MarzNode project name [default: marznode]: " PROJECT_NAME
 PROJECT_NAME=${PROJECT_NAME:-marznode}
 
-# تعیین مسیر نصب بر اساس نام پروژه در دایرکتوری هوم کاربر
+# --- تعریف مسیرهای داینامیک بر اساس نام پروژه ---
+# این بخش مهمی است که اصلاح شد تا هر پروژه پوشه مخصوص خود را داشته باشد
+BASE_DIR="/var/lib/$PROJECT_NAME"
+CERTS_DIR="$BASE_DIR/certs"
+DATA_DIR="$BASE_DIR/data"
+XRAY_BIN="$BASE_DIR/xray"
 INSTALL_DIR="$HOME/$PROJECT_NAME"
 
 echo "----------------------------------------------------"
-echo "Project Name: $PROJECT_NAME"
+echo "Project Name:      $PROJECT_NAME"
+echo "Base Directory:    $BASE_DIR"
 echo "Install Directory: $INSTALL_DIR"
-echo "Service Port: $SERVICE_PORT"
+echo "Service Port:      $SERVICE_PORT"
 echo "----------------------------------------------------"
 
 echo "[+] Installing Docker..."
@@ -29,13 +35,15 @@ else
     echo "Docker is already installed."
 fi
 
-echo "[+] Setting up MarzNode directories and certificates..."
-# ساخت دایرکتوری‌ها
-mkdir -p /var/lib/marznode/certs/
-mkdir -p /var/lib/marznode/data/
+echo "[+] Preparing directories..."
+# ساخت دایرکتوری‌های مخصوص همین پروژه
+mkdir -p "$CERTS_DIR"
+mkdir -p "$DATA_DIR"
 
-# نوشتن فایل fullchain.pem
-cat > /var/lib/marznode/certs/fullchain.pem << 'EOF'
+echo "[+] Writing certificates to $CERTS_DIR..."
+
+# نوشتن فایل fullchain.pem در مسیر داینامیک
+cat > "$CERTS_DIR/fullchain.pem" << 'EOF'
 -----BEGIN CERTIFICATE-----
 MIIELTCCA7OgAwIBAgISBmwRag3eSg9lXPMzVpI2xsJmMAoGCCqGSM49BAMDMDIx
 CzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBFbmNyeXB0MQswCQYDVQQDEwJF
@@ -89,8 +97,8 @@ u1igv3OefnWjSQ==
 -----END CERTIFICATE-----
 EOF
 
-# نوشتن فایل key.pem
-cat > /var/lib/marznode/certs/key.pem << 'EOF'
+# نوشتن فایل key.pem در مسیر داینامیک
+cat > "$CERTS_DIR/key.pem" << 'EOF'
 -----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIEf080v6t26xqaxtopYWtNl6dtoU2UMuEZ35xqO3uGwZoAoGCCqGSM49
 AwEHoUQDQgAEZPrRyQnA7F4zQVUB+BxeXVElVGryjowlbETX/KaL+u3r8d2rSWTt
@@ -98,8 +106,8 @@ MH2fBrAsmlSHTKU0kJ3SP+EOp7PYexll4w==
 -----END EC PRIVATE KEY-----
 EOF
 
-# نوشتن فایل client.pem
-cat > /var/lib/marznode/client.pem << 'EOF'
+# نوشتن فایل client.pem در مسیر داینامیک
+cat > "$BASE_DIR/client.pem" << 'EOF'
 -----BEGIN CERTIFICATE-----
 MIIEnDCCAoQCAQAwDQYJKoZIhvcNAQENBQAwEzERMA8GA1UEAwwIR296YXJnYWgw
 IBcNMjUwMjI0MTczNzMwWhgPMjEyNTAxMzExNzM3MzBaMBMxETAPBgNVBAMMCEdv
@@ -129,8 +137,8 @@ PUxV2UWCo6B4ewcKMtECSzoumBlnR355b/4Q6n5STnw=
 -----END CERTIFICATE-----
 EOF
 
-echo "[+] Downloading MarzNode configuration..."
-curl -L https://github.com/marzneshin/marznode/raw/master/xray_config.json > /var/lib/marznode/xray_config.json
+echo "[+] Downloading initial config..."
+curl -L https://github.com/marzneshin/marznode/raw/master/xray_config.json > "$BASE_DIR/xray_config.json"
 
 # --- کلون کردن ریپو و مدیریت پوشه‌ها ---
 echo "[+] Preparing project directory at: $INSTALL_DIR"
@@ -143,18 +151,20 @@ fi
 echo "[+] Cloning MarzNode repo..."
 git clone https://github.com/marzneshin/marznode "$INSTALL_DIR"
 
-# رفتن به دایرکتوری پروژه
 cd "$INSTALL_DIR"
 COMPOSE_FILE="$INSTALL_DIR/compose.yml"
 
-echo "[+] Injecting service port and environment variables into $COMPOSE_FILE..."
-# اضافه کردن متغیرها به فایل کامپوز
+echo "[+] Configuring docker-compose.yml for project isolation..."
+# 1. تزریق متغیرهای محیطی
 sed -i "/^\s*environment:/a \ \ \ \ \ \ SERVICE_PORT: \"$SERVICE_PORT\"\n\ \ \ \ \ \ INSECURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE_INTERVAL: \"5\"" "$COMPOSE_FILE"
+
+# 2. **مهم:** تغییر مسیرهای ولوم از /var/lib/marznode به مسیر داینامیک BASE_DIR
+# این کار باعث می‌شود داکر فایل‌ها را از مسیر جدید بخواند و تداخل نداشته باشد
+sed -i "s|/var/lib/marznode|$BASE_DIR|g" "$COMPOSE_FILE"
 
 echo "[+] Starting MarzNode Docker container with project name '$PROJECT_NAME'..."
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
 
-# برگشت به خانه برای ادامه مراحل
 cd "$HOME"
 
 # --- نصب WARP (اختیاری) ---
@@ -167,12 +177,10 @@ if [[ "$INSTALL_WARP" =~ ^[Yy]$ ]]; then
       mv wgcf_2.2.27_linux_amd64 /usr/bin/wgcf
   fi
   
-  # ثبت نام وارپ
   wgcf register --accept-tos || true
   wgcf generate
 
   apt update && apt install -y wireguard-dkms wireguard-tools resolvconf
-  # تغییر کانفیگ برای نود
   sed -i '/MTU = 1280/a Table = off' wgcf-profile.conf
   mkdir -p /etc/wireguard
   cp wgcf-profile.conf /etc/wireguard/warp.conf
@@ -182,7 +190,6 @@ else
 fi
 
 echo "[+] Configuring Docker DNS..."
-# تنظیم DNS داکر
 echo '{"dns": ["1.1.1.1", "1.0.0.1"]}' > /etc/docker/daemon.json
 systemctl restart docker
 
@@ -190,13 +197,13 @@ echo "[+] Restarting MarzNode container to apply DNS..."
 docker restart "$PROJECT_NAME-marznode-1"
 
 # --- آپدیت هسته Xray ---
-echo "[+] Fetching Xray keys and installing version $XRAY_VERSION..."
-# فقط برای اطمینان از اینکه کانتینر بالا آمده
-sleep 5
+echo "[+] Updating Xray binary to version $XRAY_VERSION..."
 
-echo "[+] Updating Xray binary..."
-DATA_DIR="/var/lib/marznode/data"
-XRAY_BIN="/var/lib/marznode/xray"
+# **مهم:** برای جلوگیری از ارور Text file busy، کانتینر را خاموش می‌کنیم
+echo "[!] Stopping container to safely replace Xray binary..."
+cd "$INSTALL_DIR"
+docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" stop
+
 XRAY_ZIP="Xray-linux-64.zip"
 XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/$XRAY_ZIP"
 
@@ -206,30 +213,29 @@ apt update && apt install -y unzip wget
 wget -O "$XRAY_ZIP" "$XRAY_URL"
 unzip -o "$XRAY_ZIP"
 rm "$XRAY_ZIP"
-# کپی فایل اجرایی
+
+# کپی فایل اجرایی به مسیر داینامیک
+# چون کانتینر خاموش است، ارور Text file busy نمی‌دهد
 cp "$DATA_DIR/xray" "$XRAY_BIN"
 chmod +x "$XRAY_BIN"
 
-# تنظیم مجدد فایل کامپوز برای استفاده از باینری جدید
-# حذف خطوط قبلی اگر وجود دارند
+# تنظیم مجدد فایل کامپوز برای استفاده از باینری جدید در مسیر جدید
 sed -i '/XRAY_EXECUTABLE_PATH:/d' "$COMPOSE_FILE"
 sed -i '/XRAY_ASSETS_PATH:/d' "$COMPOSE_FILE"
 
-# اضافه کردن مسیرهای جدید
-awk '
+# استفاده از مسیرهای داینامیک در فایل کامپوز
+awk -v binary="$XRAY_BIN" -v assets="$DATA_DIR" '
 /environment:/ {
   print;
-  print "      XRAY_EXECUTABLE_PATH: \"/var/lib/marznode/xray\"";
-  print "      XRAY_ASSETS_PATH: \"/var/lib/marznode/data\"";
+  print "      XRAY_EXECUTABLE_PATH: \"" binary "\"";
+  print "      XRAY_ASSETS_PATH: \"" assets "\"";
   next
 }
 { print }
 ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 
-# اعمال تغییرات با ریستارت کردن سرویس داکر کامپوز
-echo "[+] Applying Xray binary update via Docker Compose..."
+echo "[+] Starting container with updated binary..."
 cd "$INSTALL_DIR"
-docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
 cd "$HOME"
 
@@ -237,20 +243,19 @@ cd "$HOME"
 echo "[+] Applying Linux network optimizations (BBR)..."
 apt-get -o Acquire::ForceIPv4=true update
 apt-get -o Acquire::ForceIPv4=true install -y sudo curl jq
-# اجرای اسکریپت BBR
 bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/develfishere/Linux_NetworkOptimizer/main/bbr.sh)
 
-# --- تولید خروجی نهایی و ساخت کانفیگ ---
 echo ""
 echo "----------------------------------------"
 echo "✅ Installation completed successfully!"
 echo "----------------------------------------"
-echo "SERVICE_PORT: $SERVICE_PORT"
-echo "XRAY_VERSION: $XRAY_VERSION"
-echo "PROJECT_NAME: $PROJECT_NAME"
-echo ""
+echo "Project Name: $PROJECT_NAME"
+echo "Config Dir:   $BASE_DIR"
+echo "----------------------------------------"
 
 echo "[+] Generating Reality keys from container..."
+# صبر کوتاه برای اطمینان از بالا آمدن کامل کانتینر
+sleep 3
 KEYS=$(docker exec "$PROJECT_NAME-marznode-1" xray x25519)
 PRIVATE_KEY=$(echo "$KEYS" | grep 'Private key:' | awk '{print $3}')
 PUBLIC_KEY=$(echo "$KEYS" | grep 'Public key:' | awk '{print $3}')
@@ -261,10 +266,10 @@ echo "🔑 X25519 Private Key: $PRIVATE_KEY"
 echo "🔒 Short ID: $SHORT_ID"
 echo "----------------------------------------"
 
-echo "[+] Writing final Xray config with injected keys..."
+echo "[+] Writing final Xray config with injected keys to $BASE_DIR/xray_config.json..."
 
-# نوشتن فایل کانفیگ نهایی با جایگذاری متغیرها
-cat > /var/lib/marznode/xray_config.json <<EOF
+# نوشتن فایل کانفیگ در مسیر داینامیک
+cat > "$BASE_DIR/xray_config.json" <<EOF
 {
     "log": {
         "loglevel": "warning"
@@ -564,7 +569,7 @@ cat > /var/lib/marznode/xray_config.json <<EOF
 }
 EOF
 
-echo "[+] Config updated. Restarting MarzNode one last time to apply Reality keys..."
+echo "[+] Config updated. Restarting MarzNode one last time..."
 docker restart "$PROJECT_NAME-marznode-1"
 
-echo "✅ All Done!"
+echo "✅ All Done! Everything is isolated in $BASE_DIR"
