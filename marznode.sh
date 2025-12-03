@@ -9,11 +9,8 @@ SERVICE_PORT=${SERVICE_PORT:-59101}
 read -p "Enter XRAY version [default: 25.3.6]: " XRAY_VERSION
 XRAY_VERSION=${XRAY_VERSION:-25.3.6}
 
-# --- بخش جدید برای پرسیدن نام پروژه ---
-# این نام به عنوان پیشوند برای نام کانتینر (مثل myname-marznode-1) استفاده خواهد شد.
 read -p "Enter MarzNode project name [default: marznode]: " PROJECT_NAME
 PROJECT_NAME=${PROJECT_NAME:-marznode}
-# ---------------------------------------
 
 echo "[+] Installing Docker..."
 curl -fsSL https://get.docker.com | sh
@@ -118,22 +115,17 @@ EOF
 echo "[+] Downloading MarzNode configuration..."
 curl -L https://github.com/marzneshin/marznode/raw/master/xray_config.json > /var/lib/marznode/xray_config.json
 
-# --- اصلاحیه برای حل مشکل git clone و استفاده از PROJECT_NAME ---
 echo "[+] Setting up MarzNode project directory: $PROJECT_NAME..."
-# اگر دایرکتوری با نام پروژه وجود دارد، آن را حذف می‌کند.
 rm -rf "$PROJECT_NAME" 
 echo "[+] Cloning MarzNode repo into '$PROJECT_NAME'..."
 git clone https://github.com/marzneshin/marznode "$PROJECT_NAME"
 cd "$PROJECT_NAME"
-# تعریف مسیر فایل کامپوز برای استفاده‌های بعدی
 COMPOSE_FILE="$PWD/compose.yml"
-# -----------------------------------------------------------------
 
 echo "[+] Injecting service port and environment variables..."
 sed -i "/^\s*environment:/a \ \ \ \ \ \ SERVICE_PORT: \"$SERVICE_PORT\"\n\ \ \ \ \ \ INSECURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE_INTERVAL: \"5\"" "$COMPOSE_FILE"
 
 echo "[+] Starting MarzNode Docker container with project name '$PROJECT_NAME'..."
-# استفاده از -p و مسیر صحیح فایل
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
 cd
 
@@ -158,7 +150,6 @@ fi
 echo "[+] Configuring Docker DNS..."
 echo '{"dns": ["1.1.1.1", "1.0.0.1"]}' | tee /etc/docker/daemon.json
 systemctl restart docker
-# نام کانتینر برای ری‌استارت با PROJECT_NAME شروع می‌شود
 docker restart "$PROJECT_NAME-marznode-1"
 
 echo "[+] Fetching Xray keys and installing version $XRAY_VERSION..."
@@ -168,7 +159,6 @@ openssl rand -hex 8
 echo "[+] Updating Xray binary..."
 DATA_DIR="/var/lib/marznode/data"
 XRAY_BIN="/var/lib/marznode/xray"
-# متغیر COMPOSE_FILE قبلاً در بالا تعریف شده است
 XRAY_ZIP="Xray-linux-64.zip"
 XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/$XRAY_ZIP"
 
@@ -193,7 +183,7 @@ awk '
 { print }
 ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 
-cd "$HOME/$PROJECT_NAME" # تغییر دایرکتوری به مسیر پروژه
+cd "$HOME/$PROJECT_NAME" 
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" down
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
 cd
