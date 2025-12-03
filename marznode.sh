@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# توقف در صورت بروز خطا
+# توقف اسکریپت در صورت بروز هرگونه خطا
 set -e
 
 # --- دریافت ورودی‌ها ---
@@ -13,20 +13,20 @@ XRAY_VERSION=${XRAY_VERSION:-25.3.6}
 read -p "Enter MarzNode project name [default: marznode]: " PROJECT_NAME
 PROJECT_NAME=${PROJECT_NAME:-marznode}
 
-# --- تعریف مسیرهای داینامیک بر اساس نام پروژه ---
-# این بخش مهمی است که اصلاح شد تا هر پروژه پوشه مخصوص خود را داشته باشد
+# --- تعریف مسیرهای حیاتی ---
+# مسیر اصلی فایل‌های دیتا و کانفیگ بر اساس نام پروژه
 BASE_DIR="/var/lib/$PROJECT_NAME"
 CERTS_DIR="$BASE_DIR/certs"
 DATA_DIR="$BASE_DIR/data"
 XRAY_BIN="$BASE_DIR/xray"
+CONFIG_FILE="$BASE_DIR/xray_config.json"
 INSTALL_DIR="$HOME/$PROJECT_NAME"
 
-echo "----------------------------------------------------"
-echo "Project Name:      $PROJECT_NAME"
-echo "Base Directory:    $BASE_DIR"
-echo "Install Directory: $INSTALL_DIR"
-echo "Service Port:      $SERVICE_PORT"
-echo "----------------------------------------------------"
+echo "===================================================="
+echo "   MARZNODE INSTALLATION STARTED"
+echo "   Project: $PROJECT_NAME"
+echo "   Config Path: $CONFIG_FILE"
+echo "===================================================="
 
 echo "[+] Installing Docker..."
 if ! command -v docker &> /dev/null; then
@@ -35,14 +35,13 @@ else
     echo "Docker is already installed."
 fi
 
-echo "[+] Preparing directories..."
-# ساخت دایرکتوری‌های مخصوص همین پروژه
+echo "[+] Preparing directory structure at $BASE_DIR..."
+# حذف و ساخت مجدد دایرکتوری‌ها برای جلوگیری از تداخل
 mkdir -p "$CERTS_DIR"
 mkdir -p "$DATA_DIR"
 
-echo "[+] Writing certificates to $CERTS_DIR..."
-
-# نوشتن فایل fullchain.pem در مسیر داینامیک
+# --- نوشتن سرتیفیکیت‌ها ---
+echo "[+] Writing certificates..."
 cat > "$CERTS_DIR/fullchain.pem" << 'EOF'
 -----BEGIN CERTIFICATE-----
 MIIELTCCA7OgAwIBAgISBmwRag3eSg9lXPMzVpI2xsJmMAoGCCqGSM49BAMDMDIx
@@ -97,7 +96,6 @@ u1igv3OefnWjSQ==
 -----END CERTIFICATE-----
 EOF
 
-# نوشتن فایل key.pem در مسیر داینامیک
 cat > "$CERTS_DIR/key.pem" << 'EOF'
 -----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIEf080v6t26xqaxtopYWtNl6dtoU2UMuEZ35xqO3uGwZoAoGCCqGSM49
@@ -106,7 +104,6 @@ MH2fBrAsmlSHTKU0kJ3SP+EOp7PYexll4w==
 -----END EC PRIVATE KEY-----
 EOF
 
-# نوشتن فایل client.pem در مسیر داینامیک
 cat > "$BASE_DIR/client.pem" << 'EOF'
 -----BEGIN CERTIFICATE-----
 MIIEnDCCAoQCAQAwDQYJKoZIhvcNAQENBQAwEzERMA8GA1UEAwwIR296YXJnYWgw
@@ -137,34 +134,31 @@ PUxV2UWCo6B4ewcKMtECSzoumBlnR355b/4Q6n5STnw=
 -----END CERTIFICATE-----
 EOF
 
+# --- دانلود کانفیگ اولیه ---
 echo "[+] Downloading initial config..."
-curl -L https://github.com/marzneshin/marznode/raw/master/xray_config.json > "$BASE_DIR/xray_config.json"
+curl -L https://github.com/marzneshin/marznode/raw/master/xray_config.json > "$CONFIG_FILE"
 
-# --- کلون کردن ریپو و مدیریت پوشه‌ها ---
+# --- کلون کردن ریپو و مدیریت فایل‌های داکر ---
 echo "[+] Preparing project directory at: $INSTALL_DIR"
-
 if [ -d "$INSTALL_DIR" ]; then
-    echo "Directory '$INSTALL_DIR' already exists. Removing it for fresh install..."
+    echo "Directory '$INSTALL_DIR' already exists. Cleaning up..."
     rm -rf "$INSTALL_DIR"
 fi
 
-echo "[+] Cloning MarzNode repo..."
 git clone https://github.com/marzneshin/marznode "$INSTALL_DIR"
-
 cd "$INSTALL_DIR"
 COMPOSE_FILE="$INSTALL_DIR/compose.yml"
 
-echo "[+] Configuring docker-compose.yml for project isolation..."
-# 1. تزریق متغیرهای محیطی
+echo "[+] Configuring docker-compose.yml..."
+# تزریق متغیرها
 sed -i "/^\s*environment:/a \ \ \ \ \ \ SERVICE_PORT: \"$SERVICE_PORT\"\n\ \ \ \ \ \ INSECURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE_INTERVAL: \"5\"" "$COMPOSE_FILE"
 
-# 2. **مهم:** تغییر مسیرهای ولوم از /var/lib/marznode به مسیر داینامیک BASE_DIR
-# این کار باعث می‌شود داکر فایل‌ها را از مسیر جدید بخواند و تداخل نداشته باشد
+# تغییر حیاتی: تغییر مسیر ولوم‌ها به مسیر پروژه فعلی
+# این دستور باعث می‌شود داکر فایل‌های کانفیگ را از پوشه پروژه جدید بخواند
 sed -i "s|/var/lib/marznode|$BASE_DIR|g" "$COMPOSE_FILE"
 
-echo "[+] Starting MarzNode Docker container with project name '$PROJECT_NAME'..."
+echo "[+] Starting MarzNode container ($PROJECT_NAME)..."
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
-
 cd "$HOME"
 
 # --- نصب WARP (اختیاری) ---
@@ -192,15 +186,12 @@ fi
 echo "[+] Configuring Docker DNS..."
 echo '{"dns": ["1.1.1.1", "1.0.0.1"]}' > /etc/docker/daemon.json
 systemctl restart docker
-
-echo "[+] Restarting MarzNode container to apply DNS..."
 docker restart "$PROJECT_NAME-marznode-1"
 
 # --- آپدیت هسته Xray ---
-echo "[+] Updating Xray binary to version $XRAY_VERSION..."
+echo "[+] Updating Xray binary to $XRAY_VERSION..."
 
-# **مهم:** برای جلوگیری از ارور Text file busy، کانتینر را خاموش می‌کنیم
-echo "[!] Stopping container to safely replace Xray binary..."
+# توقف کانتینر برای جلوگیری از ارور Text file busy
 cd "$INSTALL_DIR"
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" stop
 
@@ -213,17 +204,14 @@ apt update && apt install -y unzip wget
 wget -O "$XRAY_ZIP" "$XRAY_URL"
 unzip -o "$XRAY_ZIP"
 rm "$XRAY_ZIP"
-
-# کپی فایل اجرایی به مسیر داینامیک
-# چون کانتینر خاموش است، ارور Text file busy نمی‌دهد
 cp "$DATA_DIR/xray" "$XRAY_BIN"
 chmod +x "$XRAY_BIN"
 
-# تنظیم مجدد فایل کامپوز برای استفاده از باینری جدید در مسیر جدید
+# تنظیم مجدد فایل کامپوز برای باینری جدید
 sed -i '/XRAY_EXECUTABLE_PATH:/d' "$COMPOSE_FILE"
 sed -i '/XRAY_ASSETS_PATH:/d' "$COMPOSE_FILE"
 
-# استفاده از مسیرهای داینامیک در فایل کامپوز
+# استفاده از awk برای جایگذاری دقیق مسیرها
 awk -v binary="$XRAY_BIN" -v assets="$DATA_DIR" '
 /environment:/ {
   print;
@@ -234,42 +222,45 @@ awk -v binary="$XRAY_BIN" -v assets="$DATA_DIR" '
 { print }
 ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 
-echo "[+] Starting container with updated binary..."
+echo "[+] Starting container with new Xray binary..."
 cd "$INSTALL_DIR"
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
 cd "$HOME"
 
 # --- بهینه‌سازی شبکه ---
-echo "[+] Applying Linux network optimizations (BBR)..."
+echo "[+] Applying BBR..."
 apt-get -o Acquire::ForceIPv4=true update
 apt-get -o Acquire::ForceIPv4=true install -y sudo curl jq
 bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/develfishere/Linux_NetworkOptimizer/main/bbr.sh)
 
-echo ""
-echo "----------------------------------------"
-echo "✅ Installation completed successfully!"
-echo "----------------------------------------"
-echo "Project Name: $PROJECT_NAME"
-echo "Config Dir:   $BASE_DIR"
-echo "----------------------------------------"
+# --- تولید و تزریق کلیدها ---
+echo "[+] Waiting for Xray to initialize..."
+sleep 5
 
-echo "[+] Generating Reality keys from container..."
-# صبر کوتاه برای اطمینان از بالا آمدن کامل کانتینر
-sleep 3
+echo "[+] Generating Reality keys..."
 KEYS=$(docker exec "$PROJECT_NAME-marznode-1" xray x25519)
+
+# استخراج دقیق کلیدها
 PRIVATE_KEY=$(echo "$KEYS" | grep 'Private key:' | awk '{print $3}')
 PUBLIC_KEY=$(echo "$KEYS" | grep 'Public key:' | awk '{print $3}')
 SHORT_ID=$(openssl rand -hex 8)
 
-echo "🔑 X25519 Public Key: $PUBLIC_KEY"
-echo "🔑 X25519 Private Key: $PRIVATE_KEY"
+# بررسی اینکه کلیدها خالی نباشند
+if [ -z "$PRIVATE_KEY" ]; then
+    echo "❌ Error: Failed to generate Private Key. Container might not be running correctly."
+    exit 1
+fi
+
+echo "----------------------------------------"
+echo "🔑 Public Key: $PUBLIC_KEY"
+echo "🔑 Private Key: $PRIVATE_KEY"
 echo "🔒 Short ID: $SHORT_ID"
 echo "----------------------------------------"
 
-echo "[+] Writing final Xray config with injected keys to $BASE_DIR/xray_config.json..."
+echo "[+] Overwriting config at: $CONFIG_FILE"
 
-# نوشتن فایل کانفیگ در مسیر داینامیک
-cat > "$BASE_DIR/xray_config.json" <<EOF
+# بازنویسی کامل فایل کانفیگ
+cat > "$CONFIG_FILE" <<EOF
 {
     "log": {
         "loglevel": "warning"
@@ -569,7 +560,13 @@ cat > "$BASE_DIR/xray_config.json" <<EOF
 }
 EOF
 
-echo "[+] Config updated. Restarting MarzNode one last time..."
+echo "[+] Applying new config (Restarting Container)..."
 docker restart "$PROJECT_NAME-marznode-1"
 
-echo "✅ All Done! Everything is isolated in $BASE_DIR"
+echo ""
+echo "===================================================="
+echo "✅ INSTALLATION SUCCESSFUL"
+echo "===================================================="
+echo "Project Name: $PROJECT_NAME"
+echo "Config File:  $CONFIG_FILE"
+echo "===================================================="
