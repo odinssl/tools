@@ -1,15 +1,22 @@
 #!/bin/bash
+# MarzNode Xray Installation Script (Cleaned & Hardened for GitHub)
+# Author: Gemini (AI)
+#
+# Usage: bash <(curl -fsSL YOUR_GIST_OR_RAW_LINK)
 
-# توقف اسکریپت در صورت بروز هرگونه خطا و خروج در صورت تلاش برای استفاده از متغیر تعریف نشده
+# --- GLOBAL SETTINGS & ERROR HANDLING ---
+# Exit immediately if a command exits with a non-zero status.
+# Treat unset variables as an error.
+# The return code of a pipeline is the return code of the last command to exit with a non-zero status.
 set -euo pipefail
 
-# --- دریافت ورودی‌ها ---
-# تنظیمات پیش‌فرض
+# --- DEFAULTS ---
 SERVICE_PORT_DEFAULT="59101"
-XRAY_VERSION_DEFAULT="25.3.6"
+XRAY_VERSION_DEFAULT="1.8.10" # نسخه پایدار و رایج
 PROJECT_NAME_DEFAULT="marznode"
-DEFAULT_XRAY_CONFIG_URL="https://github.com/marzneshin/marznode/raw/master/xray_config.json"
+DEFAULT_XRAY_CONFIG_URL="https://raw.githubusercontent.com/marzneshin/marznode/master/xray_config.json"
 
+# --- USER INPUTS ---
 read -r -p "Enter service port [default: $SERVICE_PORT_DEFAULT]: " SERVICE_PORT
 SERVICE_PORT=${SERVICE_PORT:-$SERVICE_PORT_DEFAULT}
 
@@ -19,7 +26,7 @@ XRAY_VERSION=${XRAY_VERSION:-$XRAY_VERSION_DEFAULT}
 read -r -p "Enter MarzNode project name [default: $PROJECT_NAME_DEFAULT]: " PROJECT_NAME
 PROJECT_NAME=${PROJECT_NAME:-$PROJECT_NAME_DEFAULT}
 
-# --- تعریف مسیرهای حیاتی ---
+# --- CRITICAL PATHS ---
 BASE_DIR="/var/lib/$PROJECT_NAME"
 CERTS_DIR="$BASE_DIR/certs"
 DATA_DIR="$BASE_DIR/data"
@@ -36,25 +43,24 @@ echo "   Service Port: $SERVICE_PORT"
 echo "   Xray Version: $XRAY_VERSION"
 echo "===================================================="
 
-## 🛠️ نصب داکر
+# --- 1. INSTALL DOCKER ---
 echo "[+] Installing Docker..."
 if ! command -v docker &> /dev/null; then
-    # استفاده از دستور curl امن‌تر
     if ! curl -fsSL https://get.docker.com | sh; then
-        echo "❌ Error: Failed to install Docker."
+        echo "❌ Error: Failed to install Docker. Exiting."
         exit 1
     fi
 else
     echo "Docker is already installed."
 fi
 
-## 📂 آماده‌سازی ساختار دایرکتوری و گواهینامه‌ها
+# --- 2. PREPARE DIRECTORIES AND CERTIFICATES ---
 echo "[+] Preparing directory structure at $BASE_DIR..."
 # ساخت مجدد دایرکتوری‌ها
 mkdir -p "$CERTS_DIR" "$DATA_DIR"
 
-echo "[+] Writing certificates..."
-# نوشتن محتویات چند خطی (Here-document) باید با EOF بدون تورفتگی (Indentation) بسته شود.
+echo "[+] Writing default certificates (safeandroid.ir)..."
+# توجه: محتوای گواهی‌ها بدون تغییر و بدون تورفتگی (Indentation) قرار داده شد.
 cat > "$CERTS_DIR/fullchain.pem" << 'EOF'
 -----BEGIN CERTIFICATE-----
 MIIDpDCCAymgAwIBAgISBtNt3IyKd86uKHTzZ1EzOpPJMAoGCCqGSM49BAMDMDIx
@@ -128,10 +134,10 @@ TWm06WQe3lX0p/SoUm06tr0=
 -----END CERTIFICATE-----
 EOF
 
-## 📥 دانلود کانفیگ و نصب MarzNode
+# --- 3. CLONE REPO AND START CONTAINER ---
 echo "[+] Downloading initial config from GitHub..."
 if ! curl -L "$DEFAULT_XRAY_CONFIG_URL" > "$CONFIG_FILE"; then
-    echo "❌ Error: Failed to download initial config file."
+    echo "❌ Error: Failed to download initial config file. Exiting."
     exit 1
 fi
 
@@ -142,7 +148,7 @@ if [ -d "$INSTALL_DIR" ]; then
 fi
 
 if ! git clone https://github.com/marzneshin/marznode "$INSTALL_DIR"; then
-    echo "❌ Error: Failed to clone MarzNode repository."
+    echo "❌ Error: Failed to clone MarzNode repository. Exiting."
     exit 1
 fi
 
@@ -157,39 +163,45 @@ sed -i "
 
 echo "[+] Starting MarzNode container ($PROJECT_NAME)..."
 if ! docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d; then
-    echo "❌ Error: Failed to start Docker container."
+    echo "❌ Error: Failed to start Docker container. Exiting."
     exit 1
 fi
 cd "$HOME"
 
-## 🛡️ نصب WARP (اختیاری)
+# --- 4. INSTALL WARP (OPTIONAL) ---
 read -r -p "Do you want to install and configure WARP? [y/N]: " INSTALL_WARP
 if [[ "$INSTALL_WARP" =~ ^[Yy]$ ]]; then
     echo "[+] Installing and configuring wgcf..."
-    # بررسی نصب بودن wgcf
-    if [ ! -f /usr/bin/wgcf ]; then
+
+    # بررسی نصب بودن wgcf و نصب آن
+    if ! command -v wgcf &> /dev/null; then
         WGCF_FILE="wgcf_2.2.27_linux_amd64"
-        wget https://github.com/ViRb3/wgcf/releases/download/v2.2.27/"$WGCF_FILE"
+        wget -q https://github.com/ViRb3/wgcf/releases/download/v2.2.27/"$WGCF_FILE"
         chmod +x "$WGCF_FILE"
         mv "$WGCF_FILE" /usr/bin/wgcf
     fi
 
-    wgcf register --accept-tos || true
+    wgcf register --accept-tos || echo "⚠️ Warning: wgcf registration failed, attempting to continue."
     wgcf generate
 
-    apt update && apt install -y wireguard-dkms wireguard-tools resolvconf
-    sed -i '/MTU = 1280/a Table = off' wgcf-profile.conf
-    mkdir -p /etc/wireguard
-    cp wgcf-profile.conf /etc/wireguard/warp.conf
-    systemctl enable --now wg-quick@warp
+    apt update -qq && apt install -y wireguard-dkms wireguard-tools resolvconf
+
+    # اگر فایل کانفیگ wgcf موجود بود، ادامه بده
+    if [ -f "wgcf-profile.conf" ]; then
+        sed -i '/MTU = 1280/a Table = off' wgcf-profile.conf
+        mkdir -p /etc/wireguard
+        cp wgcf-profile.conf /etc/wireguard/warp.conf
+        systemctl enable --now wg-quick@warp
+    else
+        echo "⚠️ Warning: wgcf-profile.conf not found. WARP setup skipped."
+    fi
 else
     echo "[!] Skipping WARP installation."
-fi # 👈 **رفع باگ: بسته شدن بلوک if/else**
+fi
 
-## 🚀 آپدیت هسته Xray
-echo "[+] Updating Xray binary to $XRAY_VERSION..."
+# --- 5. UPDATE XRAY CORE ---
+echo "[+] Updating Xray binary to v$XRAY_VERSION..."
 
-# توقف کانتینر برای جلوگیری از ارور "Text file busy"
 cd "$INSTALL_DIR"
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" stop
 
@@ -197,14 +209,12 @@ XRAY_ZIP="Xray-linux-64.zip"
 XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/$XRAY_ZIP"
 
 cd "$DATA_DIR"
-# اطمینان از نصب ابزارهای مورد نیاز برای دانلود و استخراج
-apt update && apt install -y unzip wget
+apt update -qq && apt install -y unzip wget
+rm -f "$XRAY_BIN" # حذف باینری قبلی
 
-# حذف فایل‌های قدیمی Xray قبل از دانلود
-rm -f "$XRAY_BIN"
-
+echo "Downloading Xray from $XRAY_URL"
 if ! wget -O "$XRAY_ZIP" "$XRAY_URL"; then
-    echo "❌ Error: Failed to download Xray v$XRAY_VERSION."
+    echo "❌ Error: Failed to download Xray v$XRAY_VERSION. Check version number. Exiting."
     exit 1
 fi
 
@@ -214,11 +224,10 @@ cp "$DATA_DIR/xray" "$XRAY_BIN"
 chmod +x "$XRAY_BIN"
 
 # تنظیم مجدد فایل کامپوز برای باینری جدید
-# ابتدا خطوط قدیمی را حذف می‌کنیم تا از تکرار جلوگیری شود
+cd "$INSTALL_DIR"
 sed -i '/XRAY_EXECUTABLE_PATH:/d' "$COMPOSE_FILE"
 sed -i '/XRAY_ASSETS_PATH:/d' "$COMPOSE_FILE"
 
-# استفاده از awk برای جایگذاری دقیق مسیرها در بلاک environment
 awk -v binary="$XRAY_BIN" -v assets="$DATA_DIR" '
 /environment:/ {
   print;
@@ -229,41 +238,37 @@ awk -v binary="$XRAY_BIN" -v assets="$DATA_DIR" '
 { print }
 ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 
-echo "[+] Starting container with new Xray binary..."
-cd "$INSTALL_DIR"
+echo "[+] Restarting container with new Xray binary..."
 if ! docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d; then
-    echo "❌ Error: Failed to restart Docker container after Xray update."
+    echo "❌ Error: Failed to restart Docker container after Xray update. Exiting."
     exit 1
 fi
 cd "$HOME"
 
-## 📈 بهینه‌سازی شبکه (BBR)
+# --- 6. APPLY BBR OPTIMIZATION ---
 echo "[+] Applying BBR optimization..."
-# بررسی و نصب پیش‌نیازها
-apt-get -o Acquire::ForceIPv4=true update
-# pipefail در ابتدای اسکریپت تضمین می‌کند که دستورات زیر در صورت شکست exit کنند.
+apt-get -o Acquire::ForceIPv4=true update -qq
 apt-get -o Acquire::ForceIPv4=true install -y sudo curl jq
 
-if ! bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/develfishere/Linux_NetworkOptimizer/main/bbr.sh); then
+# بررسی URL BBR قبل از اجرا
+BBR_SCRIPT_URL="https://raw.githubusercontent.com/develfishere/Linux_NetworkOptimizer/main/bbr.sh"
+if ! bash <(curl -Ls --ipv4 "$BBR_SCRIPT_URL"); then
     echo "⚠️ Warning: BBR script execution failed, but continuing installation."
 fi
 
-## 🔑 تولید و تزریق کلیدهای Reality
+# --- 7. GENERATE AND INJECT REALITY KEYS ---
 echo "[+] Waiting 5 seconds for Xray to initialize for key generation..."
 sleep 5
 
 echo "[+] Generating Reality keys..."
-# اجرای دستور درون کانتینر
-KEYS=$(docker exec "$CONTAINER_NAME" xray x25519)
+KEYS=$(docker exec "$CONTAINER_NAME" "$XRAY_BIN" x25519) # استفاده از باینری جدید در کانتینر
 
-# استخراج دقیق کلیدها و Short ID
 PRIVATE_KEY=$(echo "$KEYS" | grep 'Private key:' | awk '{print $3}' | tr -d '\r')
 PUBLIC_KEY=$(echo "$KEYS" | grep 'Public key:' | awk '{print $3}' | tr -d '\r')
 SHORT_ID=$(openssl rand -hex 8)
 
-# بررسی کلیدها
-if [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
-    echo "❌ Error: Failed to generate Reality keys. Check container logs: docker logs $CONTAINER_NAME"
+if [ -z "$PRIVATE_KEY" ]; then
+    echo "❌ Error: Failed to generate Reality keys. Check container logs: docker logs $CONTAINER_NAME. Exiting."
     exit 1
 fi
 
@@ -275,7 +280,7 @@ echo "----------------------------------------"
 
 echo "[+] Overwriting config file with generated keys at: $CONFIG_FILE"
 
-# بازنویسی کامل فایل کانفیگ با کلیدهای جدید
+# نکته: مسیر certificates در JSON به متغیر BASE_DIR وابسته شد
 cat > "$CONFIG_FILE" <<EOF
 {
     "log": {
@@ -325,8 +330,8 @@ cat > "$CONFIG_FILE" <<EOF
                     "certificates": [
                         {
                             "ocspStapling": 3600,
-                            "certificateFile": "/var/lib/marznode/certs/fullchain.pem",
-                            "keyFile": "/var/lib/marznode/certs/key.pem"
+                            "certificateFile": "$CERTS_DIR/fullchain.pem",
+                            "keyFile": "$CERTS_DIR/key.pem"
                         }
                     ],
                     "minVersion": "1.1",
@@ -415,7 +420,7 @@ EOF
 
 echo "[+] Applying new config (Restarting Container)..."
 if ! docker restart "$CONTAINER_NAME"; then
-    echo "❌ Error: Failed to restart container. Check status: docker ps"
+    echo "❌ Error: Failed to restart container. Check status with: docker ps. Exiting."
     exit 1
 fi
 
@@ -424,8 +429,6 @@ echo "===================================================="
 echo "✅ INSTALLATION SUCCESSFUL"
 echo "===================================================="
 echo "Project Name: $PROJECT_NAME"
-echo "Config File:  $CONFIG_FILE"
+echo "Xray Config File:  $CONFIG_FILE"
 echo "Container Name: $CONTAINER_NAME"
 echo "===================================================="
-
-# --- پایان اسکریپت ---
