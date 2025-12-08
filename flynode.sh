@@ -1,47 +1,60 @@
 #!/bin/bash
 
-# توقف اسکریپت در صورت بروز هرگونه خطا
-set -e
+# توقف اسکریپت در صورت بروز هرگونه خطا و خروج در صورت تلاش برای استفاده از متغیر تعریف نشده
+set -euo pipefail
 
 # --- دریافت ورودی‌ها ---
-read -p "Enter service port [default: 59101]: " SERVICE_PORT
-SERVICE_PORT=${SERVICE_PORT:-59101}
+# تنظیمات پیش‌فرض
+SERVICE_PORT_DEFAULT="59101"
+XRAY_VERSION_DEFAULT="25.3.6"
+PROJECT_NAME_DEFAULT="marznode"
+DEFAULT_XRAY_CONFIG_URL="https://github.com/marzneshin/marznode/raw/master/xray_config.json"
 
-read -p "Enter XRAY version [default: 25.3.6]: " XRAY_VERSION
-XRAY_VERSION=${XRAY_VERSION:-25.3.6}
+read -r -p "Enter service port [default: $SERVICE_PORT_DEFAULT]: " SERVICE_PORT
+SERVICE_PORT=${SERVICE_PORT:-$SERVICE_PORT_DEFAULT}
 
-read -p "Enter MarzNode project name [default: marznode]: " PROJECT_NAME
-PROJECT_NAME=${PROJECT_NAME:-marznode}
+read -r -p "Enter XRAY version [default: $XRAY_VERSION_DEFAULT]: " XRAY_VERSION
+XRAY_VERSION=${XRAY_VERSION:-$XRAY_VERSION_DEFAULT}
+
+read -r -p "Enter MarzNode project name [default: $PROJECT_NAME_DEFAULT]: " PROJECT_NAME
+PROJECT_NAME=${PROJECT_NAME:-$PROJECT_NAME_DEFAULT}
 
 # --- تعریف مسیرهای حیاتی ---
-# مسیر اصلی فایل‌های دیتا و کانفیگ بر اساس نام پروژه
 BASE_DIR="/var/lib/$PROJECT_NAME"
 CERTS_DIR="$BASE_DIR/certs"
 DATA_DIR="$BASE_DIR/data"
 XRAY_BIN="$BASE_DIR/xray"
 CONFIG_FILE="$BASE_DIR/xray_config.json"
 INSTALL_DIR="$HOME/$PROJECT_NAME"
+COMPOSE_FILE="$INSTALL_DIR/compose.yml"
+CONTAINER_NAME="${PROJECT_NAME}-marznode-1"
 
 echo "===================================================="
-echo "   MARZNODE INSTALLATION STARTED"
-echo "   Project: $PROJECT_NAME"
-echo "   Config Path: $CONFIG_FILE"
+echo "   MARZNODE INSTALLATION STARTED 🚀"
+echo "   Project: $PROJECT_NAME"
+echo "   Service Port: $SERVICE_PORT"
+echo "   Xray Version: $XRAY_VERSION"
 echo "===================================================="
 
+## 🛠️ نصب داکر
 echo "[+] Installing Docker..."
 if ! command -v docker &> /dev/null; then
-    curl -fsSL https://get.docker.com | sh
+    # استفاده از دستور curl امن‌تر
+    if ! curl -fsSL https://get.docker.com | sh; then
+        echo "❌ Error: Failed to install Docker."
+        exit 1
+    fi
 else
-    echo "Docker is already installed."
+    echo "Docker is already installed."
 fi
 
+## 📂 آماده‌سازی ساختار دایرکتوری و گواهینامه‌ها
 echo "[+] Preparing directory structure at $BASE_DIR..."
-# حذف و ساخت مجدد دایرکتوری‌ها برای جلوگیری از تداخل
-mkdir -p "$CERTS_DIR"
-mkdir -p "$DATA_DIR"
+# ساخت مجدد دایرکتوری‌ها
+mkdir -p "$CERTS_DIR" "$DATA_DIR"
 
-# --- نوشتن سرتیفیکیت‌ها ---
 echo "[+] Writing certificates..."
+# نوشتن محتویات چند خطی (Here-document) باید با EOF بدون تورفتگی (Indentation) بسته شود.
 cat > "$CERTS_DIR/fullchain.pem" << 'EOF'
 -----BEGIN CERTIFICATE-----
 MIIDpDCCAymgAwIBAgISBtNt3IyKd86uKHTzZ1EzOpPJMAoGCCqGSM49BAMDMDIx
@@ -111,119 +124,147 @@ BggqhkjOPQMBBwNCAARjpE6/LVXFEZRpjR4uTUrU1/wwNAZl+SpInqN+v4sedzln
 MAsGA1UdDwQEAwIFoDAdBgNVHQ4EFgQUZK7DrfWf95Ne3FIo/phD5rW1bk0wHQYD
 VR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMAoGCCqGSM49BAMCA0gAMEUCIGaI
 vnHR17qb8C/gBQgyIjhc2+LQ85qE7HN1XdjYT7YCAiEA2WXGcHrALXVT3Xervagx
-TWm06WQe3lX0p+SoUm06tr0=
+TWm06WQe3lX0p/SoUm06tr0=
 -----END CERTIFICATE-----
 EOF
 
-# --- دانلود کانفیگ اولیه ---
-echo "[+] Downloading initial config..."
-curl -L https://github.com/marzneshin/marznode/raw/master/xray_config.json > "$CONFIG_FILE"
-
-# --- کلون کردن ریپو و مدیریت فایل‌های داکر ---
-echo "[+] Preparing project directory at: $INSTALL_DIR"
-if [ -d "$INSTALL_DIR" ]; then
-    echo "Directory '$INSTALL_DIR' already exists. Cleaning up..."
-    rm -rf "$INSTALL_DIR"
+## 📥 دانلود کانفیگ و نصب MarzNode
+echo "[+] Downloading initial config from GitHub..."
+if ! curl -L "$DEFAULT_XRAY_CONFIG_URL" > "$CONFIG_FILE"; then
+    echo "❌ Error: Failed to download initial config file."
+    exit 1
 fi
 
-git clone https://github.com/marzneshin/marznode "$INSTALL_DIR"
+echo "[+] Preparing project directory at: $INSTALL_DIR"
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Directory '$INSTALL_DIR' already exists. Cleaning up old files..."
+    rm -rf "$INSTALL_DIR"
+fi
+
+if ! git clone https://github.com/marzneshin/marznode "$INSTALL_DIR"; then
+    echo "❌ Error: Failed to clone MarzNode repository."
+    exit 1
+fi
+
 cd "$INSTALL_DIR"
-COMPOSE_FILE="$INSTALL_DIR/compose.yml"
 
 echo "[+] Configuring docker-compose.yml..."
-# تزریق متغیرها
-sed -i "/^\s*environment:/a \ \ \ \ \ \ SERVICE_PORT: \"$SERVICE_PORT\"\n\ \ \ \ \ \ INSECURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE_INTERVAL: \"5\"" "$COMPOSE_FILE"
-
-# تغییر حیاتی: تغییر مسیر ولوم‌ها به مسیر پروژه فعلی
-# این دستور باعث می‌شود داکر فایل‌های کانفیگ را از پوشه پروژه جدید بخواند
-sed -i "s|/var/lib/marznode|$BASE_DIR|g" "$COMPOSE_FILE"
+# تزریق متغیرها و تنظیم مسیرها
+sed -i "
+  /^\s*environment:/a \ \ \ \ \ \ SERVICE_PORT: \"$SERVICE_PORT\"\n\ \ \ \ \ \ INSECURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE: \"True\"\n\ \ \ \ \ \ XRAY_RESTART_ON_FAILURE_INTERVAL: \"5\"
+  s|/var/lib/marznode|$BASE_DIR|g
+" "$COMPOSE_FILE"
 
 echo "[+] Starting MarzNode container ($PROJECT_NAME)..."
-docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
+if ! docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d; then
+    echo "❌ Error: Failed to start Docker container."
+    exit 1
+fi
 cd "$HOME"
 
-# --- نصب WARP (اختیاری) ---
-read -p "Do you want to install and configure WARP? [y/N]: " INSTALL_WARP
+## 🛡️ نصب WARP (اختیاری)
+read -r -p "Do you want to install and configure WARP? [y/N]: " INSTALL_WARP
 if [[ "$INSTALL_WARP" =~ ^[Yy]$ ]]; then
-  echo "[+] Installing and configuring wgcf..."
-  if [ ! -f /usr/bin/wgcf ]; then
-      wget https://github.com/ViRb3/wgcf/releases/download/v2.2.27/wgcf_2.2.27_linux_amd64
-      chmod +x wgcf_2.2.27_linux_amd64
-      mv wgcf_2.2.27_linux_amd64 /usr/bin/wgcf
-  fi
-  
-  wgcf register --accept-tos || true
-  wgcf generate
+    echo "[+] Installing and configuring wgcf..."
+    # بررسی نصب بودن wgcf
+    if [ ! -f /usr/bin/wgcf ]; then
+        WGCF_FILE="wgcf_2.2.27_linux_amd64"
+        wget https://github.com/ViRb3/wgcf/releases/download/v2.2.27/"$WGCF_FILE"
+        chmod +x "$WGCF_FILE"
+        mv "$WGCF_FILE" /usr/bin/wgcf
+    fi
 
-  apt update && apt install -y wireguard-dkms wireguard-tools resolvconf
-  sed -i '/MTU = 1280/a Table = off' wgcf-profile.conf
-  mkdir -p /etc/wireguard
-  cp wgcf-profile.conf /etc/wireguard/warp.conf
-  systemctl enable --now wg-quick@warp
+    wgcf register --accept-tos || true
+    wgcf generate
+
+    apt update && apt install -y wireguard-dkms wireguard-tools resolvconf
+    sed -i '/MTU = 1280/a Table = off' wgcf-profile.conf
+    mkdir -p /etc/wireguard
+    cp wgcf-profile.conf /etc/wireguard/warp.conf
+    systemctl enable --now wg-quick@warp
 else
-  echo "[!] Skipping WARP installation."
+    echo "[!] Skipping WARP installation."
+fi # 👈 **رفع باگ: بسته شدن بلوک if/else**
 
-# --- آپدیت هسته Xray ---
+## 🚀 آپدیت هسته Xray
 echo "[+] Updating Xray binary to $XRAY_VERSION..."
 
-# توقف کانتینر برای جلوگیری از ارور Text file busy
+# توقف کانتینر برای جلوگیری از ارور "Text file busy"
 cd "$INSTALL_DIR"
 docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" stop
 
 XRAY_ZIP="Xray-linux-64.zip"
 XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/v$XRAY_VERSION/$XRAY_ZIP"
 
-mkdir -p "$DATA_DIR"
 cd "$DATA_DIR"
+# اطمینان از نصب ابزارهای مورد نیاز برای دانلود و استخراج
 apt update && apt install -y unzip wget
-wget -O "$XRAY_ZIP" "$XRAY_URL"
+
+# حذف فایل‌های قدیمی Xray قبل از دانلود
+rm -f "$XRAY_BIN"
+
+if ! wget -O "$XRAY_ZIP" "$XRAY_URL"; then
+    echo "❌ Error: Failed to download Xray v$XRAY_VERSION."
+    exit 1
+fi
+
 unzip -o "$XRAY_ZIP"
 rm "$XRAY_ZIP"
 cp "$DATA_DIR/xray" "$XRAY_BIN"
 chmod +x "$XRAY_BIN"
 
 # تنظیم مجدد فایل کامپوز برای باینری جدید
+# ابتدا خطوط قدیمی را حذف می‌کنیم تا از تکرار جلوگیری شود
 sed -i '/XRAY_EXECUTABLE_PATH:/d' "$COMPOSE_FILE"
 sed -i '/XRAY_ASSETS_PATH:/d' "$COMPOSE_FILE"
 
-# استفاده از awk برای جایگذاری دقیق مسیرها
+# استفاده از awk برای جایگذاری دقیق مسیرها در بلاک environment
 awk -v binary="$XRAY_BIN" -v assets="$DATA_DIR" '
 /environment:/ {
-  print;
-  print "      XRAY_EXECUTABLE_PATH: \"" binary "\"";
-  print "      XRAY_ASSETS_PATH: \"" assets "\"";
-  next
+  print;
+  print "      XRAY_EXECUTABLE_PATH: \"" binary "\"";
+  print "      XRAY_ASSETS_PATH: \"" assets "\"";
+  next
 }
 { print }
 ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
 
 echo "[+] Starting container with new Xray binary..."
 cd "$INSTALL_DIR"
-docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d
+if ! docker compose -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d; then
+    echo "❌ Error: Failed to restart Docker container after Xray update."
+    exit 1
+fi
 cd "$HOME"
 
-# --- بهینه‌سازی شبکه ---
-echo "[+] Applying BBR..."
+## 📈 بهینه‌سازی شبکه (BBR)
+echo "[+] Applying BBR optimization..."
+# بررسی و نصب پیش‌نیازها
 apt-get -o Acquire::ForceIPv4=true update
+# pipefail در ابتدای اسکریپت تضمین می‌کند که دستورات زیر در صورت شکست exit کنند.
 apt-get -o Acquire::ForceIPv4=true install -y sudo curl jq
-bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/develfishere/Linux_NetworkOptimizer/main/bbr.sh)
 
-# --- تولید و تزریق کلیدها ---
-echo "[+] Waiting for Xray to initialize..."
+if ! bash <(curl -Ls --ipv4 https://raw.githubusercontent.com/develfishere/Linux_NetworkOptimizer/main/bbr.sh); then
+    echo "⚠️ Warning: BBR script execution failed, but continuing installation."
+fi
+
+## 🔑 تولید و تزریق کلیدهای Reality
+echo "[+] Waiting 5 seconds for Xray to initialize for key generation..."
 sleep 5
 
 echo "[+] Generating Reality keys..."
-KEYS=$(docker exec "$PROJECT_NAME-marznode-1" xray x25519)
+# اجرای دستور درون کانتینر
+KEYS=$(docker exec "$CONTAINER_NAME" xray x25519)
 
-# استخراج دقیق کلیدها
-PRIVATE_KEY=$(echo "$KEYS" | grep 'Private key:' | awk '{print $3}')
-PUBLIC_KEY=$(echo "$KEYS" | grep 'Public key:' | awk '{print $3}')
+# استخراج دقیق کلیدها و Short ID
+PRIVATE_KEY=$(echo "$KEYS" | grep 'Private key:' | awk '{print $3}' | tr -d '\r')
+PUBLIC_KEY=$(echo "$KEYS" | grep 'Public key:' | awk '{print $3}' | tr -d '\r')
 SHORT_ID=$(openssl rand -hex 8)
 
-# بررسی اینکه کلیدها خالی نباشند
-if [ -z "$PRIVATE_KEY" ]; then
-    echo "❌ Error: Failed to generate Private Key. Container might not be running correctly."
-    exit 1
+# بررسی کلیدها
+if [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
+    echo "❌ Error: Failed to generate Reality keys. Check container logs: docker logs $CONTAINER_NAME"
+    exit 1
 fi
 
 echo "----------------------------------------"
@@ -232,153 +273,159 @@ echo "🔑 Private Key: $PRIVATE_KEY"
 echo "🔒 Short ID: $SHORT_ID"
 echo "----------------------------------------"
 
-echo "[+] Overwriting config at: $CONFIG_FILE"
+echo "[+] Overwriting config file with generated keys at: $CONFIG_FILE"
 
-# بازنویسی کامل فایل کانفیگ
+# بازنویسی کامل فایل کانفیگ با کلیدهای جدید
 cat > "$CONFIG_FILE" <<EOF
 {
-    "log": {
-        "loglevel": "warning"
-    },
-    "dns": {
-        "servers": [
-            "https+local://1.1.1.1/dns-query",
-            "https+local://1.0.0.1/dns-query"
-        ]
-    },
-    "routing": {
-        "domainStrategy": "IPIfNonMatch",
-        "rules": [
-            {
-                "type": "field",
-                "outboundTag": "warp",
-                "ip": [
-                    "geoip:ir"
-                ]
-            },
-            {
-                "type": "field",
-                "ip": [
-                    "geoip:private"
-                ],
-                "outboundTag": "block"
-            }
-        ]
-    },
-    "inbounds": [
-        {
-            "tag": "CDN",
-            "listen": "0.0.0.0",
-            "port": 443,
-            "protocol": "vless",
-            "settings": {
-                "clients": [],
-                "decryption": "none"
-            },
-            "streamSettings": {
-                "network": "ws",
-                "wsSettings": {},
-                "security": "tls",
-                "tlsSettings": {
-                    "serverName": "",
-                    "certificates": [
-                        {
-                            "ocspStapling": 3600,
-                            "certificateFile": "/var/lib/marznode/certs/fullchain.pem",
-                            "keyFile": "/var/lib/marznode/certs/key.pem"
-                        }
-                    ],
-                    "minVersion": "1.1",
-                    "cipherSuites": "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-                }
-            },
-            "sniffing": {
-                "enabled": false,
-                "destOverride": [
-                    "http",
-                    "tls"
-                ]
-            }
-        },
-                {
-            "tag": "4tun",
-            "listen": "0.0.0.0",
-            "port": 4545,
-            "protocol": "vmess",
-            "settings": {
-                "clients": []
-            },
-            "streamSettings": {
-                "network": "grpc",
-                "security": "none",
-                "grpcSettings": {
-                    "serviceName": "odin"
-                }
-            },
-            "sniffing": {
-                "enabled": true,
-                "destOverride": [
-                    "http",
-                    "tls"
-                ]
-            }
-        },
-        {
-            "tag": "Reality",
-            "listen": "0.0.0.0",
-            "port": 8890,
-            "protocol": "vless",
-            "settings": {
-                "clients": [],
-                "decryption": "none"
-            },
-            "streamSettings": {
-                "network": "tcp",
-                "tcpSettings": {},
-                "security": "reality",
-                "realitySettings": {
-                    "show": false,
-                    "dest": "mdundo.com:443",
-                    "xver": 0,
-                    "serverNames": [
-                        "refersion.com"
-                    ],
-                    "privateKey": "$PRIVATE_KEY",
-                    "publicKey": "$PUBLIC_KEY",
-                    "shortIds": [
-                        "$SHORT_ID"
-                    ]
-                }
-            },
-            "sniffing": {
-                "enabled": false,
-                "destOverride": [
-                    "http",
-                    "tls"
-                ]
-            }
-        }
-        ],
-    "outbounds": [
-        {
-            "protocol": "freedom",
-            "tag": "direct"
-        },
-        {
-            "protocol": "blackhole",
-            "tag": "block"
-        }
-    ]
+    "log": {
+        "loglevel": "warning"
+    },
+    "dns": {
+        "servers": [
+            "https+local://1.1.1.1/dns-query",
+            "https+local://1.0.0.1/dns-query"
+        ]
+    },
+    "routing": {
+        "domainStrategy": "IPIfNonMatch",
+        "rules": [
+            {
+                "type": "field",
+                "outboundTag": "warp",
+                "ip": [
+                    "geoip:ir"
+                ]
+            },
+            {
+                "type": "field",
+                "ip": [
+                    "geoip:private"
+                ],
+                "outboundTag": "block"
+            }
+        ]
+    },
+    "inbounds": [
+        {
+            "tag": "CDN",
+            "listen": "0.0.0.0",
+            "port": 443,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "ws",
+                "wsSettings": {},
+                "security": "tls",
+                "tlsSettings": {
+                    "serverName": "",
+                    "certificates": [
+                        {
+                            "ocspStapling": 3600,
+                            "certificateFile": "/var/lib/marznode/certs/fullchain.pem",
+                            "keyFile": "/var/lib/marznode/certs/key.pem"
+                        }
+                    ],
+                    "minVersion": "1.1",
+                    "cipherSuites": "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+                }
+            },
+            "sniffing": {
+                "enabled": false,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        },
+        {
+            "tag": "4tun",
+            "listen": "0.0.0.0",
+            "port": 4545,
+            "protocol": "vmess",
+            "settings": {
+                "clients": []
+            },
+            "streamSettings": {
+                "network": "grpc",
+                "security": "none",
+                "grpcSettings": {
+                    "serviceName": "odin"
+                }
+            },
+            "sniffing": {
+                "enabled": true,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        },
+        {
+            "tag": "Reality",
+            "listen": "0.0.0.0",
+            "port": 8890,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "tcpSettings": {},
+                "security": "reality",
+                "realitySettings": {
+                    "show": false,
+                    "dest": "mdundo.com:443",
+                    "xver": 0,
+                    "serverNames": [
+                        "refersion.com"
+                    ],
+                    "privateKey": "$PRIVATE_KEY",
+                    "publicKey": "$PUBLIC_KEY",
+                    "shortIds": [
+                        "$SHORT_ID"
+                    ]
+                }
+            },
+            "sniffing": {
+                "enabled": false,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        }
+        ],
+    "outbounds": [
+        {
+            "protocol": "freedom",
+            "tag": "direct"
+        },
+        {
+            "protocol": "blackhole",
+            "tag": "block"
+        }
+    ]
 }
 EOF
 
 echo "[+] Applying new config (Restarting Container)..."
-docker restart "$PROJECT_NAME-marznode-1"
+if ! docker restart "$CONTAINER_NAME"; then
+    echo "❌ Error: Failed to restart container. Check status: docker ps"
+    exit 1
+fi
 
 echo ""
 echo "===================================================="
 echo "✅ INSTALLATION SUCCESSFUL"
 echo "===================================================="
 echo "Project Name: $PROJECT_NAME"
-echo "Config File:  $CONFIG_FILE"
+echo "Config File:  $CONFIG_FILE"
+echo "Container Name: $CONTAINER_NAME"
 echo "===================================================="
+
+# --- پایان اسکریپت ---
