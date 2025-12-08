@@ -4,11 +4,11 @@
 set -e
 
 # --- دریافت ورودی‌ها ---
-read -p "Enter service port [default: 59101]: " SERVICE_PORT
+read -p "Enter service port [default: 89101]: " SERVICE_PORT
 SERVICE_PORT=${SERVICE_PORT:-59101}
 
-read -p "Enter XRAY version [default: 25.3.6]: " XRAY_VERSION
-XRAY_VERSION=${XRAY_VERSION:-25.3.6}
+read -p "Enter XRAY version [default: 25.6.8]: " XRAY_VERSION
+XRAY_VERSION=${XRAY_VERSION:-25.6.8}
 
 read -p "Enter MarzNode project name [default: marznode]: " PROJECT_NAME
 PROJECT_NAME=${PROJECT_NAME:-marznode}
