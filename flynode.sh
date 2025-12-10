@@ -4,11 +4,11 @@
 set -e
 
 # --- دریافت ورودی‌ها ---
-read -p "Enter service port [default: 89101]: " SERVICE_PORT
+read -p "Enter service port [default: 59101]: " SERVICE_PORT
 SERVICE_PORT=${SERVICE_PORT:-59101}
 
-read -p "Enter XRAY version [default: 25.6.8]: " XRAY_VERSION
-XRAY_VERSION=${XRAY_VERSION:-25.6.8}
+read -p "Enter XRAY version [default: 25.3.6]: " XRAY_VERSION
+XRAY_VERSION=${XRAY_VERSION:-25.3.6}
 
 read -p "Enter MarzNode project name [default: marznode]: " PROJECT_NAME
 PROJECT_NAME=${PROJECT_NAME:-marznode}
@@ -65,7 +65,6 @@ zj0EAwMDZwAwZAIwHjmHD/SCJOHab8qGoAypDCdyKfO6y4GSndQ6O0U4dqjtqdyx
 il5RBupzeYCL8+HMAjAJ165V27cnHbzr2vIAmlKY2l/aCVCTf8SzMfoMVyUj/1oZ
 KGtiOEq8ubFTx+8yazQ=
 -----END CERTIFICATE-----
-
 -----BEGIN CERTIFICATE-----
 MIIEVjCCAj6gAwIBAgIQY5WTY8JOcIJxWRi/w9ftVjANBgkqhkiG9w0BAQsFADBP
 MQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJuZXQgU2VjdXJpdHkgUmVzZWFy
@@ -111,7 +110,7 @@ BggqhkjOPQMBBwNCAARjpE6/LVXFEZRpjR4uTUrU1/wwNAZl+SpInqN+v4sedzln
 MAsGA1UdDwQEAwIFoDAdBgNVHQ4EFgQUZK7DrfWf95Ne3FIo/phD5rW1bk0wHQYD
 VR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMAoGCCqGSM49BAMCA0gAMEUCIGaI
 vnHR17qb8C/gBQgyIjhc2+LQ85qE7HN1XdjYT7YCAiEA2WXGcHrALXVT3Xervagx
-TWm06WQe3lX0p/SoUm06tr0=
+TWm06WQe3lX0p+SoUm06tr0=
 -----END CERTIFICATE-----
 EOF
 
@@ -264,13 +263,6 @@ cat > "$CONFIG_FILE" <<EOF
             },
             {
                 "type": "field",
-                "outboundTag": "warp",
-                "domain": [
-                    "tld-ir"
-                ]
-            },
-            {
-                "type": "field",
                 "ip": [
                     "geoip:private"
                 ],
@@ -307,29 +299,6 @@ cat > "$CONFIG_FILE" <<EOF
             },
             "sniffing": {
                 "enabled": false,
-                "destOverride": [
-                    "http",
-                    "tls"
-                ]
-            }
-        },
-                {
-            "tag": "4tun",
-            "listen": "0.0.0.0",
-            "port": 4545,
-            "protocol": "vmess",
-            "settings": {
-                "clients": []
-            },
-            "streamSettings": {
-                "network": "grpc",
-                "security": "none",
-                "grpcSettings": {
-                    "serviceName": "odin"
-                }
-            },
-            "sniffing": {
-                "enabled": true,
                 "destOverride": [
                     "http",
                     "tls"
