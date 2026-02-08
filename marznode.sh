@@ -478,29 +478,6 @@ cat > "$CONFIG_FILE" <<EOF
                 ]
             }
         },
-                {
-            "tag": "4tun",
-            "listen": "0.0.0.0",
-            "port": 4545,
-            "protocol": "vmess",
-            "settings": {
-                "clients": []
-            },
-            "streamSettings": {
-                "network": "grpc",
-                "security": "none",
-                "grpcSettings": {
-                    "serviceName": "odin"
-                }
-            },
-            "sniffing": {
-                "enabled": true,
-                "destOverride": [
-                    "http",
-                    "tls"
-                ]
-            }
-        },
         {
             "tag": "C1",
             "listen": "0.0.0.0",
