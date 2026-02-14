@@ -512,6 +512,60 @@ cat > "$CONFIG_FILE" <<EOF
                     "tls"
                 ]
             }
+        },
+                {
+            "tag": "fastlyyyy",
+            "listen": "0.0.0.0",
+            "port": 80,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none",
+                "fallbacks": []
+            },
+            "streamSettings": {
+                "network": "xhttp",
+                "security": "none",
+                "xhttpSettings": {
+                    "path": "/",
+                    "host": "",
+                    "headers": {},
+                    "scMaxBufferedPosts": 30,
+                    "scMaxEachPostBytes": "1000000",
+                    "noSSEHeader": false,
+                    "xPaddingBytes": "100-1000",
+                    "mode": "auto"
+                }
+            },
+            "sniffing": {
+                "enabled": false,
+                "destOverride": [
+                    "http",
+                    "tls",
+                    "quic",
+                    "fakedns"
+                ],
+                "metadataOnly": false,
+                "routeOnly": false
+            }
+        },
+        {
+            "port": 3333,
+            "protocol": "vless",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "e4b2a8d1-7c5e-4f9a-bc2d-1a8f9e0d3c5b"
+                    }
+                ],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "ws",
+                "wsSettings": {
+                    "path": "/tunnel-vless"
+                }
+            }
         }
         ],
     "outbounds": [
