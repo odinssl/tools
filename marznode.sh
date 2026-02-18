@@ -445,40 +445,6 @@ cat > "$CONFIG_FILE" <<EOF
     },
     "inbounds": [
         {
-            "tag": "C4",
-            "listen": "0.0.0.0",
-            "port": 443,
-            "protocol": "vless",
-            "settings": {
-                "clients": [],
-                "decryption": "none"
-            },
-            "streamSettings": {
-                "network": "ws",
-                "wsSettings": {},
-                "security": "tls",
-                "tlsSettings": {
-                    "serverName": "",
-                    "certificates": [
-                        {
-                            "ocspStapling": 3600,
-                            "certificateFile": "/var/lib/marznode/certs/fullchain.pem",
-                            "keyFile": "/var/lib/marznode/certs/key.pem"
-                        }
-                    ],
-                    "minVersion": "1.1",
-                    "cipherSuites": "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-                }
-            },
-            "sniffing": {
-                "enabled": false,
-                "destOverride": [
-                    "http",
-                    "tls"
-                ]
-            }
-        },
-        {
             "tag": "C1",
             "listen": "0.0.0.0",
             "port": 6690,
