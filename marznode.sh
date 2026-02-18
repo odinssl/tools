@@ -566,6 +566,37 @@ cat > "$CONFIG_FILE" <<EOF
                     "path": "/tunnel-vless"
                 }
             }
+        },
+        {
+            "tag": "C3",
+            "listen": "0.0.0.0",
+            "port": 9012,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "tcpSettings": {
+                    "header": {
+                        "request": {
+                            "method": "GET",
+                            "path": [
+                                "/"
+                            ],
+                            "headers": {
+                                "Host": [
+                                    "fast.com"
+                                ]
+                            }
+                        },
+                        "response": {},
+                        "type": "http"
+                    }
+                },
+                "security": "none"
+            }
         }
         ],
     "outbounds": [
