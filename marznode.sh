@@ -480,6 +480,41 @@ cat > "$CONFIG_FILE" <<EOF
             }
         },
                 {
+            "tag": "C11",
+            "listen": "0.0.0.0",
+            "port": 30678,
+            "protocol": "vless",
+            "settings": {
+                "clients": [],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "tcpSettings": {},
+                "security": "reality",
+                "realitySettings": {
+                    "show": false,
+                    "dest": "yahoo.com:443",
+                    "xver": 0,
+                    "serverNames": [
+                        "yahoo.com"
+                    ],
+                    "privateKey": "$PRIVATE_KEY",
+                    "publicKey": "$PUBLIC_KEY",
+                    "shortIds": [
+                        "$SHORT_ID"
+                    ]
+                }
+            },
+            "sniffing": {
+                "enabled": false,
+                "destOverride": [
+                    "http",
+                    "tls"
+                ]
+            }
+        },
+                {
             "tag": "fastlyyyy",
             "listen": "0.0.0.0",
             "port": 80,
@@ -536,7 +571,7 @@ cat > "$CONFIG_FILE" <<EOF
         {
             "tag": "C3",
             "listen": "0.0.0.0",
-            "port": 9012,
+            "port": 9000,
             "protocol": "vless",
             "settings": {
                 "clients": [],
